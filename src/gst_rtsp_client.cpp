@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #include <string.h>
 
@@ -66,6 +67,16 @@
 
 //     return GST_FLOW_ERROR;
 // }
+
+
+// sleep for ms 
+static void sleep_ms(unsigned int secs)
+{
+    struct timeval tval;
+    tval.tv_sec=secs/1000;
+    tval.tv_usec=(secs*1000)%1000000;
+    select(0,NULL,NULL,NULL,&tval);
+}
 
 // appsink probe
 static GstPadProbeReturn
@@ -191,6 +202,7 @@ bus_watch_cb (GstBus * bus, GstMessage * msg, gpointer user_data)
           GST_MESSAGE_SRC_NAME (msg)
           );
       gst_element_set_state (GST_ELEMENT (dec->pipeline), requested_state);
+      g_print("state change %s \n", requested_state);
       break;
     }
     case GST_MESSAGE_LATENCY:{
@@ -205,6 +217,21 @@ bus_watch_cb (GstBus * bus, GstMessage * msg, gpointer user_data)
       break;
     case GST_MESSAGE_INFO:
     case GST_MESSAGE_WARNING:
+    // case GST_MESSAGE_ERROR: {  
+    //   g_print("piple call_bus message %d \n", dec->m_Id);  
+    //   GError *error = NULL;  
+    //   gchar *debug_info = NULL;  
+    
+    //   gst_message_parse_error(msg, &error, &debug_info);  
+    //   g_print("error info: %s \n", error->message);     
+    
+    //   g_print("GStreamer ERROR: %s; debug info: %s \n", error->message, debug_info);  
+    
+    //   g_clear_error(&error);  
+    //   g_free(debug_info);     
+    
+    //   break;  
+    // }
     case GST_MESSAGE_ERROR:{
       g_print ( "piple call_bus message %d \n",dec->m_Id);
       GError *error = NULL;
@@ -222,6 +249,7 @@ bus_watch_cb (GstBus * bus, GstMessage * msg, gpointer user_data)
           break;
         case GST_MESSAGE_ERROR:
           gst_message_parse_error (msg, &error, &debug_info);
+          g_print ("error info: %s \n", error->message); 
           prefix = "ERROR";
           break;
         default:
@@ -250,78 +278,6 @@ bus_watch_cb (GstBus * bus, GstMessage * msg, gpointer user_data)
 
   return TRUE;
 }
-
-// static void
-// buffer_to_file (struct CustomData *dec, GstBuffer * buf)
-// {
-//   int ret;
-//   GstVideoMeta *meta = gst_buffer_get_video_meta (buf);
-//   guint nplanes = GST_VIDEO_INFO_N_PLANES (&(dec->info));
-//   guint width, height;
-//   GstMapInfo map_info;
-//   gchar filename[128];
-//   GstVideoFormat pixfmt;
-//   const char *pixfmt_str;
-
-//   pixfmt = GST_VIDEO_INFO_FORMAT (&(dec->info));
-//   pixfmt_str = gst_video_format_to_string (pixfmt);
-
-//   /* TODO: use the DMABUF directly */
-
-//   gst_buffer_map (buf, &map_info, GST_MAP_READ);
-
-//   width = GST_VIDEO_INFO_WIDTH (&(dec->info));
-//   height = GST_VIDEO_INFO_HEIGHT (&(dec->info));
-
-//   /* output some information at the beginning (= when the first frame is handled) */
-//   if (dec->frame == 0) {
-//     printf ("===================================\n");
-//     printf ("GStreamer video stream information:\n");
-//     printf ("  size: %u x %u pixel\n", width, height);
-//     printf ("  pixel format: %s  number of planes: %u\n", pixfmt_str, nplanes);
-//     printf ("  video meta found: %s\n", yesno (meta != NULL));
-//     printf ("===================================\n");
-//   }
-
-//   gst_buffer_unmap (buf, &map_info);
-
-//   return;
-// }
-
-// static void *
-// video_frame_loop (void *arg)
-// {
-//   struct CustomData *dec = (struct CustomData *) arg;
-
-//   // gst_app_sink_set_max_buffers (GST_APP_SINK(dec->appsink),1);
-//   // gst_app_sink_set_buffer_list_support (GST_APP_SINK(dec->appsink),FALSE);
-
-//   do {
-//     GstSample *samp;
-//     GstBuffer *buf;
-
-//     samp = gst_app_sink_pull_sample (GST_APP_SINK (dec->appsink));
-//     // samp = gst_app_sink_try_pull_sample (GST_APP_SINK (dec->appsink),100000);
-//     if (!samp) {
-//       GST_DEBUG ("got no appsink sample");
-//       if (gst_app_sink_is_eos (GST_APP_SINK (dec->appsink)))
-//         GST_DEBUG ("eos");
-//       return((void *)0);
-//     }
-
-//     buf = gst_sample_get_buffer (samp);
-//     buffer_to_file (dec, buf);
-
-//     gst_sample_unref (samp);
-//     dec->frame++;
-
-//     // sleep(2);
-
-//   } while (1);
-
-//   return((void *)0);
-
-// }
 
 static void
 cb_newpad (GstElement * decodebin, GstPad * decoder_src_pad, gpointer data)
@@ -372,6 +328,7 @@ rtsp_init(struct CustomData *data) {
     data->pipeline = gst_pipeline_new(std::to_string(data->m_Id).c_str());
     g_print("rtsp_init rtspsrc %s \n" , std::to_string(data->m_Id).c_str());
     data->uridecodebin = gst_element_factory_make ( "uridecodebin", ("uridecodebin_"+ std::to_string(data->m_Id)).c_str());
+
     data->nvvideoconvert = gst_element_factory_make ( "nvvidconv", ("nvvidconv_"+ std::to_string(data->m_Id)).c_str());
     data->capsfilter = gst_element_factory_make ( "capsfilter", ("capsfilter_"+ std::to_string(data->m_Id)).c_str());
     data->appsink  = gst_element_factory_make ( "appsink", ("appsink_"+ std::to_string(data->m_Id)).c_str());
@@ -382,53 +339,17 @@ rtsp_init(struct CustomData *data) {
     
     //create_uri(url,url_size, ip_address, port);
     g_print("rtsp_uri:%s\n",data->m_RtspUri);
-    // g_object_set (GST_OBJECT (data->rtspsrc), "location", data->m_RtspUri, NULL);
-    // g_object_set (GST_OBJECT (data->rtspsrc), "latency", 2000, NULL);
-    // g_object_set (GST_OBJECT (data->rtspsrc), "timeout", 1000000, NULL);
-    // g_object_set (GST_OBJECT (data->rtspsrc), "udp-reconnect", 1, NULL);
-    // g_object_set (GST_OBJECT (data->rtspsrc), "retry", 1000, NULL);
-    // g_object_set (GST_OBJECT (data->rtspsrc), "debug", 1, NULL);
-    /**
-     * GstRTSPLowerTrans:
-     * @GST_RTSP_LOWER_TRANS_UNKNOWN: invalid transport flag
-     * @GST_RTSP_LOWER_TRANS_UDP: stream data over UDP
-     * @GST_RTSP_LOWER_TRANS_UDP_MCAST: stream data over UDP multicast
-     * @GST_RTSP_LOWER_TRANS_TCP: stream data over TCP
-     * @GST_RTSP_LOWER_TRANS_HTTP: stream data tunneled over HTTP.
-     * @GST_RTSP_LOWER_TRANS_TLS: encrypt TCP and HTTP with TLS
-     *
-     * The different transport methods.
-     */
-    // g_object_set (GST_OBJECT (data->rtspsrc), "protocols", GST_RTSP_LOWER_TRANS_HTTP, NULL);
-    //"rtsp://<ip>:554/live/ch00_0"
-    // if (data->conn_Mode == 1) {
-    // 	g_object_set (GST_OBJECT (data->rtspsrc), "protocols", GST_RTSP_LOWER_TRANS_TCP, NULL);
-    // }else if ( data->conn_Mode == 2){
-    //     g_object_set (GST_OBJECT (data->rtspsrc), "protocols", GST_RTSP_LOWER_TRANS_UDP, NULL);
-    // } else {
-    //     g_object_set (GST_OBJECT (data->rtspsrc), "protocols", GST_RTSP_LOWER_TRANS_UNKNOWN, NULL);
-    // }
+    
     g_object_set (G_OBJECT (data->uridecodebin), "uri", data->m_RtspUri, NULL);
 
-    /**
-     * appsink
-    */
-    // #define CAPS "video/x-raw,format=BGR"	//设置appsink输出的视频格式
-    // GstCaps *video_caps;
-    // gchar *video_caps_text;
-    // video_caps_text = g_strdup_printf (CAPS);
-    // video_caps = gst_caps_from_string (video_caps_text);
-    // if(!video_caps){
-    //   g_printerr("gst_caps_from_string fail\n");
-    //   return -1;
-    // }
    /* Configure appsink to extract data from DeepStream pipeline */
-    g_object_set (data->appsink, "emit-signals", TRUE, "async", FALSE, NULL);
+    //g_object_set (data->appsink, "emit-signals", TRUE, "async", FALSE, NULL);
+    g_object_set (data->appsink, "emit-signals", TRUE, "sync", FALSE, NULL);
     gst_base_sink_set_max_lateness (GST_BASE_SINK (data->appsink), 70 * GST_MSECOND);
     gst_base_sink_set_qos_enabled (GST_BASE_SINK (data->appsink), TRUE);
-    g_object_set (G_OBJECT (data->appsink), "max-buffers", 1, NULL);
+    //g_object_set (G_OBJECT (data->appsink), "max-buffers", 1, NULL);
     // g_object_set (G_OBJECT (data->appsink), "caps", video_caps, NULL);
-    gst_app_sink_set_max_buffers(GST_APP_SINK (data->appsink), 100); // limit number of buffers queued
+    gst_app_sink_set_max_buffers(GST_APP_SINK (data->appsink), 10); // limit number of buffers queued
     gst_app_sink_set_drop(GST_APP_SINK (data->appsink), TRUE); // drop old buffers in queue when full
     // g_signal_connect ( G_OBJECT (data->appsink), "new-sample", G_CALLBACK (new_sample), data->pipeline);
 
@@ -464,8 +385,8 @@ rtsp_init(struct CustomData *data) {
     /**设置 fitler caps**/ 
     cvt_caps = gst_caps_new_simple("video/x-raw",
           "format", G_TYPE_STRING, "BGRx",
-          "width", G_TYPE_INT, 1920,
-          "height", G_TYPE_INT, 1080,
+          //"width", G_TYPE_INT, 1080,
+          //"height", G_TYPE_INT, 1920,
           nullptr);
     // feature = gst_caps_features_new("memory:NVMM", nullptr);
     // gst_caps_set_features(cvt_caps, 0, feature);
@@ -488,7 +409,7 @@ rtsp_init(struct CustomData *data) {
     * pipeline */
     // g_print(bin_name);
     data->source_bin = gst_bin_new (bin_name);
-
+    //sleep_ms(500);
     /* Connect to the "pad-added" signal of the decodebin which generates a
     * callback once a new pad for raw data has beed created by the decodebin */
     g_signal_connect (G_OBJECT (data->uridecodebin), "pad-added",
@@ -533,13 +454,14 @@ rtsp_init(struct CustomData *data) {
 
     /* Callback to access buffer and object info. */
     // g_signal_connect (data->appsink, "new-sample", G_CALLBACK (new_sample), NULL);
-    
+    //sleep_ms(500);
     data->bus = gst_pipeline_get_bus( GST_PIPELINE (data->pipeline));
     gst_bus_add_watch (data->bus, bus_watch_cb, data);
     //gst_object_unref ( GST_OBJECT (bus));
 
     // start playing
     printf ("start playing \n");
+    //sleep_ms(500);
     gst_element_set_state (GST_ELEMENT(data->pipeline), GST_STATE_PLAYING);
 
     //g_main_loop_run (main_loop);
@@ -994,8 +916,10 @@ RtspClient::read_Opencv() {
         }
     }
 
+    
     /* output some information at the beginning (= when the first frame is handled) */
     if (this->m_data.frame == 0) {
+      //sleep_ms(5000);
       printf ("===================================\n");
       printf ("GStreamer video stream information:\n");
       printf ("  size: %u x %u pixel\n", source_width, source_height);
@@ -1014,13 +938,13 @@ RtspClient::read_Opencv() {
           this->m_data.dst_buf = (char*)malloc(rgb_size);
     }
     cvtColorBGRx2BGR((guint8*)(this->m_data.dst_buf), map_info.data, source_width,source_height);
-    // memcpy(this->m_data.dst_buf, map_info.data, rgb_size);
+    //memcpy(this->m_data.dst_buf, map_info.data, rgb_size);
   
     data->width = source_width;
     data->height = source_height;
     data->data = this->m_data.dst_buf;
     data->size = rgb_size;
-
+    //g_print("get cam data \n");
     gst_buffer_unmap (buf, &map_info);
     gst_sample_unref (samp);
 

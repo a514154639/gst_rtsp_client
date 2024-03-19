@@ -2,7 +2,7 @@
 #include <string.h>
 #include <unordered_map>
 #include <utility>
-
+#include <time.h>
 #include <gst_rtsp_client.h>
 #include <mutex>
 #include <malloc.h>
@@ -17,6 +17,14 @@ unordered_map<int,RtspClient*> ::iterator it;
 
 mutex m_mutex;
 bool isInit = false;
+
+static void sleep_ms(unsigned int secs)
+{
+    struct timeval tval;
+    tval.tv_sec=secs/1000;
+    tval.tv_usec=(secs*1000)%1000000;
+    select(0,NULL,NULL,NULL,&tval);
+}
 
 /* init gst_init */
 extern "C" void
@@ -48,6 +56,27 @@ createRtspClient(int id, const char* url, int conn_mode)
         return FAIL;
     }
 }
+
+extern "C" int
+Init_uri(int id, const char* url)
+{
+    m_mutex.lock();
+    sleep(2);
+    init();
+    g_print("setup createRtspClient %d %s\n",id,url);
+    if ( mMap.find(id) != mMap.end() ) {
+      return SUCCESS;
+    }
+    mMap.insert(pair<int,RtspClient*>(id ,new RtspClient()));
+    if (mMap.find(id)->second->enable(id, url, 1)){
+        m_mutex.unlock();
+        return SUCCESS;
+    }else{
+        m_mutex.unlock();
+        return FAIL;
+    }
+}
+
 
 extern "C" int
 destoryRtspClientAll()
@@ -126,8 +155,30 @@ reConnect(int id)
   }
 }
 
+// extern "C" int
+// mRead_Opencv(int id, int& width, int& height, int& size, char*& data)
+// {
+//   if (mMap.find(id) != mMap.end()){
+//     if (mMap.find(id)->second->isConnect() == STATUS_CONNECTED)
+//     {
+//       FrameData *framedata = mMap.find(id)->second->read_Opencv();
+//       if (framedata->size != 0) {
+//         data = framedata->data;
+//         width = framedata->width;
+//         height = framedata->height;
+//         size = framedata->size;
+//         free( framedata);
+//         return SUCCESS;
+//       }
+//       free( framedata);
+//     }
+//   }
+//   return FAIL;
+
+// }
+
 extern "C" int
-mRead_Opencv(int id, int& width, int& height, int& size, char*& data)
+Getbyte(int id, int& width, int& height, int& size, char*& data)
 {
   if (mMap.find(id) != mMap.end()){
     if (mMap.find(id)->second->isConnect() == STATUS_CONNECTED)
